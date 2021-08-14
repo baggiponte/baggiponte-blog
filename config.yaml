@@ -1,4 +1,4 @@
-theme: 'hugo-PaperMod'
+theme: "hugo-PaperMod"
 baseURL: https://coding-corner.netlify.app/
 languageCode: en-us
 title: 'My Coding Corner'
@@ -7,10 +7,7 @@ params:
   author: Luca Baggi
 
   homeInfoParams:
-    Title: >
-      📈 Luca’s Coding Corner:
-      
-      - A Learning Journal for Data Science
+    Title: "My Data Science Learning Journal 📈"
     Content: >
       I am an Economics Graduate Student with a passion for data
       and I want to document my journey learning data science techniques using this blog.
