@@ -1,0 +1,98 @@
+---
+title: Getting Started with {rvest} for Web Scraping
+author: Luca Baggi
+date: '2021-03-27'
+slug: []
+categories: []
+draft: true
+tags:
+  - web_scraping
+---
+
+<script src="{{< blogdown/postref >}}index_files/header-attrs/header-attrs.js"></script>
+
+
+<pre class="r"><code>library(tidyverse)
+library(rvest)</code></pre>
+<p>Let’s use these packages to grab content from FiveThirtyEight Slack chats published on their website.</p>
+<pre class="r"><code># create the dataset to store the webpages
+tibble(page_num = 1:26) %&gt;% # number of web pages
+  # recursively create the link of each web page
+  mutate(page_link = glue::glue(&#39;https://fivethirtyeight.com/tag/slack-chat/page/{page_num}/&#39;)) -&gt; fivethirtyeight_slackchat</code></pre>
+<p>Let’s test this</p>
+<pre class="r"><code>test_page &lt;- &#39;https://fivethirtyeight.com/tag/slack-chat/page/1/&#39;
+
+test_page %&gt;% 
+  rvest::read_html() %&gt;%
+  rvest::html_nodes(&#39;#main .entry-title a&#39;) %&gt;% 
+  rvest::html_attr(&#39;href&#39;) %&gt;% 
+  as_tibble() %&gt;% 
+  rename(links = value)</code></pre>
+<pre><code>## # A tibble: 10 × 1
+##    links                                                                        
+##    &lt;chr&gt;                                                                        
+##  1 https://fivethirtyeight.com/features/the-response-to-the-jan-6-select-commit…
+##  2 https://fivethirtyeight.com/features/will-a-pro-vaccination-push-by-gop-lead…
+##  3 https://fivethirtyeight.com/features/the-governor-and-house-primary-races-we…
+##  4 https://fivethirtyeight.com/features/the-senate-primary-races-were-watching-…
+##  5 https://fivethirtyeight.com/features/new-yorks-mayoral-primary-has-put-ranke…
+##  6 https://fivethirtyeight.com/features/is-our-primary-system-broken/           
+##  7 https://fivethirtyeight.com/features/what-has-and-hasnt-changed-since-george…
+##  8 https://fivethirtyeight.com/features/what-are-the-stakes-of-the-supreme-cour…
+##  9 https://fivethirtyeight.com/features/will-2022-be-a-good-year-for-republican…
+## 10 https://fivethirtyeight.com/features/is-there-no-place-for-liz-cheney-in-the…</code></pre>
+<p>And then create a function out of it:</p>
+<pre class="r"><code>get_links &lt;- function(page_link){
+  page_link %&gt;% 
+  rvest::read_html() %&gt;%
+  rvest::html_nodes(&#39;#main .entry-title a&#39;) %&gt;% 
+  rvest::html_attr(&#39;href&#39;) %&gt;% 
+  as_tibble() %&gt;% 
+  rename(links = value)
+}</code></pre>
+<pre class="r"><code>fivethirtyeight_slackchat &lt;- fivethirtyeight_slackchat %&gt;% 
+  mutate(link = purrr::map(page_link, get_links)) %&gt;% 
+  unnest(link)
+
+fivethirtyeight_slackchat</code></pre>
+<pre><code>## # A tibble: 260 × 3
+##    page_num page_link                                          links            
+##       &lt;int&gt; &lt;glue&gt;                                             &lt;chr&gt;            
+##  1        1 https://fivethirtyeight.com/tag/slack-chat/page/1/ https://fivethir…
+##  2        1 https://fivethirtyeight.com/tag/slack-chat/page/1/ https://fivethir…
+##  3        1 https://fivethirtyeight.com/tag/slack-chat/page/1/ https://fivethir…
+##  4        1 https://fivethirtyeight.com/tag/slack-chat/page/1/ https://fivethir…
+##  5        1 https://fivethirtyeight.com/tag/slack-chat/page/1/ https://fivethir…
+##  6        1 https://fivethirtyeight.com/tag/slack-chat/page/1/ https://fivethir…
+##  7        1 https://fivethirtyeight.com/tag/slack-chat/page/1/ https://fivethir…
+##  8        1 https://fivethirtyeight.com/tag/slack-chat/page/1/ https://fivethir…
+##  9        1 https://fivethirtyeight.com/tag/slack-chat/page/1/ https://fivethir…
+## 10        1 https://fivethirtyeight.com/tag/slack-chat/page/1/ https://fivethir…
+## # … with 250 more rows</code></pre>
+<p>Then we do it all over again to grab the text from each link!</p>
+<pre class="r"><code>test_link &lt;- &#39;https://fivethirtyeight.com/features/our-way-too-early-2024-republican-presidential-primary-draft/&#39;
+
+test_link %&gt;% 
+  rvest::read_html() %&gt;% 
+  rvest::html_nodes(&#39;.single-post-content &gt; p&#39;) %&gt;% 
+  rvest::html_text() %&gt;% 
+  as_tibble()</code></pre>
+<pre><code>## # A tibble: 180 × 1
+##    value                                                                        
+##    &lt;chr&gt;                                                                        
+##  1 &quot;Welcome to FiveThirtyEight’s politics chat. The transcript below has been l…
+##  2 &quot;sarah (Sarah Frostenson, politics editor): We’re still more than three year…
+##  3 &quot;It’s been a while, so the rules are as follows: Four rounds, so between the…
+##  4 &quot;The order is:&quot;                                                              
+##  5 &quot;And I used random.org to determine the order (so it’s clearly not rigged).&quot; 
+##  6 &quot;geoffrey.skelley (Geoffrey Skelley, elections analyst): I get the boring pi…
+##  7 &quot;sarah: It’s so funny to me that everyone thinks there is already an obvious…
+##  8 &quot;alex (Alex Samuels, politics reporter): Don’t steal my pick, Nathaniel!&quot;    
+##  9 &quot;nrakich (Nathaniel Rakich, elections analyst): I’m stealing it, Alex!&quot;      
+## 10 &quot;sarah: Alright, Geoffrey. You’re up!! What is this obvious pick of yours? &quot; 
+## # … with 170 more rows</code></pre>
+<pre class="r"><code>get_text &lt;- function(link){
+  link %&gt;%
+    rvest::read_html() %&gt;% 
+    rvest::html_nodes(&#39;.single-post-content &gt; p&#39;)
+}</code></pre>

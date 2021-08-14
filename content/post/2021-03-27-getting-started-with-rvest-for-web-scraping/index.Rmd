@@ -1,0 +1,85 @@
+---
+title: Getting Started with {rvest} for Web Scraping
+author: Luca Baggi
+date: '2021-03-27'
+slug: []
+categories: []
+draft: true
+tags:
+  - web_scraping
+---
+
+```{r, setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE)
+```
+
+
+```{r, message=FALSE}
+library(tidyverse)
+library(rvest)
+```
+
+Let's use these packages to grab content from FiveThirtyEight Slack chats published on their website.
+
+```{r}
+# create the dataset to store the webpages
+tibble(page_num = 1:26) %>% # number of web pages
+  # recursively create the link of each web page
+  mutate(page_link = glue::glue('https://fivethirtyeight.com/tag/slack-chat/page/{page_num}/')) -> fivethirtyeight_slackchat
+```
+
+Let's test this
+
+```{r}
+test_page <- 'https://fivethirtyeight.com/tag/slack-chat/page/1/'
+
+test_page %>% 
+  rvest::read_html() %>%
+  rvest::html_nodes('#main .entry-title a') %>% 
+  rvest::html_attr('href') %>% 
+  as_tibble() %>% 
+  rename(links = value)
+```
+
+And then create a function out of it:
+
+```{r}
+get_links <- function(page_link){
+  page_link %>% 
+  rvest::read_html() %>%
+  rvest::html_nodes('#main .entry-title a') %>% 
+  rvest::html_attr('href') %>% 
+  as_tibble() %>% 
+  rename(links = value)
+}
+```
+
+```{r}
+fivethirtyeight_slackchat <- fivethirtyeight_slackchat %>% 
+  mutate(link = purrr::map(page_link, get_links)) %>% 
+  unnest(link)
+
+fivethirtyeight_slackchat
+```
+
+Then we do it all over again to grab the text from each link!
+
+```{r}
+test_link <- 'https://fivethirtyeight.com/features/our-way-too-early-2024-republican-presidential-primary-draft/'
+
+test_link %>% 
+  rvest::read_html() %>% 
+  rvest::html_nodes('.single-post-content > p') %>% 
+  rvest::html_text() %>% 
+  as_tibble()
+```
+
+
+```{r}
+get_text <- function(link){
+  link %>%
+    rvest::read_html() %>% 
+    rvest::html_nodes('.single-post-content > p')
+}
+```
+

@@ -1,0 +1,197 @@
+---
+title: Getting the European Union Map using rgdal
+author: Luca Baggi
+date: '2021-02-07'
+slug: european-union-map-rgdal
+categories: []
+tags:
+  - eu
+  - maps
+draft: true
+---
+
+<script src="{{< blogdown/postref >}}index_files/header-attrs/header-attrs.js"></script>
+
+
+<p>The other day I needed to plot some data about EU savings. I went back to the <a href="https://www.r-graph-gallery.com/index.html">R Graph Gallery</a> to look at how to do that. Unfortunately, no EU map is readily available with R packages such as <code>maps</code>. This meant I had to start a fun trip across Eurostat official pages and retrieve one. We will also be mentioning a couple of spatial libraries for R. In the end, we will use <code>{sf}</code>, so make sure to run <code>install.packages('sf')</code>.</p>
+<pre class="r"><code># set a relative path that points at this file
+here::i_am(&quot;./index.Rmd&quot;)
+library(here)
+
+library(tidyverse)
+library(sf)
+
+# set better theme
+theme_set(theme_minimal())</code></pre>
+<div id="getting-familiar-with-maps" class="section level1">
+<h1>Getting Familiar with Maps</h1>
+<p>Let’s get familiar with maps! R offers several packages which can be plotted with <code>base R</code> <code>plot()</code> command or <code>ggplot()</code> using the layer <code>geom_polygon()</code> (but also others).</p>
+<p>Some maps can be drawn directly from <code>ggplot</code> using <code>ggplot::map_data()</code> (which relies on <code>maps</code>). However, it does not have everything one might need.</p>
+<pre class="r"><code># load a map
+usa_map &lt;- map_data(&#39;state&#39;) 
+
+# plain US map
+usa_map %&gt;%
+  ggplot(aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = &#39;grey60&#39;, col = &#39;grey&#39;) +
+  # to set the coordinates
+  coord_map()</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/example-map-1.png" width="2100" /></p>
+<p>But we can improve on this:</p>
+<pre class="r"><code>usa_map %&gt;%
+  ggplot(aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = &#39;grey60&#39;, col = &#39;grey&#39;) +
+  coord_map() +
+  labs(
+    title = &quot;**United States of America**&quot;,
+    subtitle = &quot;*Just a plain map*&quot;,
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    plot.title.position = &quot;plot&quot;,
+    plot.title = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown(),
+    panel.grid = element_blank(), # remove plot grid
+    axis.text = element_blank(), # removes text from both axis
+    axis.ticks = element_blank() # same with ticks
+  )</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/better-usa-map-1.png" width="2100" /></p>
+<p>This seems nice, but let’s add some data to create an informative visualisation.</p>
+<pre class="r"><code># add some data
+arrests_data &lt;- USArrests %&gt;% as_tibble(rownames = &#39;state&#39;)
+
+arrests_data %&gt;%
+  # specify the column for the (indirect) join we are going to perform
+  ggplot(aes(
+    # we set it to lowercase because `state` starts with a capital letter
+    # in the map object it&#39;s lowercase
+    map_id = tolower(state))
+  ) +
+  geom_map(aes(fill = Murder), map = usa_map) +
+  # needed to set the boundaries right!
+  expand_limits(x = usa_map$long, y = usa_map$lat) +
+  # do not forget!
+  coord_map() +
+  scale_fill_gradient2(high = &quot;red&quot;) +
+  labs(
+    title = &#39;**Murders in each US State**&#39;,
+    subtitle = &quot;*Darker means greater number of murders*&quot;,
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    plot.title.position = &quot;plot&quot;,
+    plot.title = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown(),
+    panel.grid = element_blank(), # remove plot grid
+    axis.text = element_blank(), # removes text from both axis
+    axis.ticks = element_blank(), # same with ticks
+    legend.position = &#39;none&#39;
+  )</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/add-data-1.png" width="2100" /></p>
+<p>The package <code>ggmap</code> fetches data like Google Maps, but if we want to use a specific file, such as a <code>.shp</code> we must use the function <code>readOGR()</code> from <code>{rgdal}</code>. <code>json</code> files can be read with <code>{geojsonio}</code>. All can be read with the swiss-knife for spatial analysis in R: <code>{sf}</code>.</p>
+</div>
+<div id="a-map-for-the-eu" class="section level1">
+<h1>A Map for the EU</h1>
+<p>The EU’s official institute of statistics, Eurostat, has developed a specific classifications of the member states’ administrative units. It’s called <a href="https://ec.europa.eu/eurostat/web/nuts/background">NUTS</a> (Nomenclature of Territorial Units for Statistics) and it has three/four levels according to the administrative regions in the Union. The files can be all downloaded from <a href="https://ec.europa.eu/eurostat/web/gisco/geodata/reference-data/administrative-units-statistical-units/nuts">here</a>. However, Eurostat has also created a public GitHub repository to retrieve geojson files: <a href="https://github.com/eurostat/Nuts2json">eurostat/nuts2json</a>.</p>
+<pre class="r"><code># define data dir for downloading files
+data_dir &lt;- here::here(&quot;data&quot;)
+# define file url
+nuts0_url &lt;- &quot;https://raw.githubusercontent.com/eurostat/Nuts2json/master/2021/3035/10M/0.json&quot;
+
+if (file.exists(here::here(data_dir, &quot;nuts0.json&quot;))) {
+  print(&quot;Data was already downloaded, you can proceed with the analysis!&quot;)
+} else {
+  if (dir.exists(data_dir)) {
+    download.file(nuts0_url, destfile = here(data_dir, &quot;nuts0.json&quot;))
+  } else {
+    dir.create(data_dir)
+    download.file(nuts0_url, destfile = here(data_dir, &quot;nuts0.json&quot;))
+  }
+}</code></pre>
+<pre><code>## [1] &quot;Data was already downloaded, you can proceed with the analysis!&quot;</code></pre>
+<pre class="r"><code>nuts0_path &lt;- here(data_dir, &quot;nuts0.json&quot;)</code></pre>
+<p>The resolution we are using is 1:10 million, and 2021 is the year the classification was updated.</p>
+<p>Geographic data cannot simply be plotted: broadly speaking, this is because the Earth cannot be converted to a flat surface, without distortions. In other words, before using some geographic data, we must make sure we are using the recommended projections. This is of the utmost importance when joining data from different sources.</p>
+<p>The projection is one among the following:</p>
+<ul>
+<li>projection: 4-digit <a href="https://en.wikipedia.org/wiki/EPSG_Geodetic_Parameter_Dataset">EPSG code</a></li>
+<li>EPSG:4326 (WGS84, coordinates in decimal degrees)</li>
+<li>EPSG:3035 (ETRS 1989 in <a href="https://en.wikipedia.org/wiki/Lambert_azimuthal_equal-area_projection">Lambert Azimutal</a> projection with * centre in E52N10, coordinates in meters)</li>
+<li>EPSG:3857 (WGS84 Web Mercator Auxiliary Sphere, coordinates in meters)</li>
+</ul>
+<p>EPSG:3035 is recommended for plotting EU data.</p>
+<p>Finally, here’s a quick explanation of the NUTS levels:</p>
+<ul>
+<li>NUTS levels 0,1,2,3. No subset code means all NUTS levels are in the same file.</li>
+<li>LEVL_0: NUTS level 0 (countries)</li>
+<li>LEVL_1: NUTS level 1</li>
+<li>LEVL_2: NUTS level 2</li>
+<li>LEVL_3: NUTS level 3</li>
+<li>Country boundaries: coastline or inland line. No subset code means all country boundaries are in the same file.</li>
+<li>INLAND: inland boundaries</li>
+<li>COASTL: coastlines</li>
+</ul>
+<p>Let’s look at the layers available in the <code>.json</code> file we downlaoded:</p>
+<pre class="r"><code>sf::st_layers(nuts0_path)</code></pre>
+<pre><code>## Driver: TopoJSON 
+## Available layers:
+##   layer_name geometry_type features fields
+## 1     nutsrg                     37      2
+## 2     nutsbn   Line String     1898      7
+## 3      cntrg                     31      2
+## 4      cntbn                    246      4
+## 5        gra   Line String       16      1</code></pre>
+<pre class="r"><code>nuts0 &lt;- sf::st_read(nuts0_path, layer = &quot;nutsrg&quot;) %&gt;% 
+  # crs needs to be set!
+  st_set_crs(&quot;EPSG:3035&quot;)</code></pre>
+<pre><code>## Reading layer `nutsrg&#39; from data source 
+##   `/Users/luca/OneDrive - Università degli Studi di Milano/dev/r-projects/coding-corner/content/post/2021-02-07-european-union-map-rgdal/data/nuts0.json&#39; 
+##   using driver `TopoJSON&#39;
+## Simple feature collection with 37 features and 2 fields
+## Geometry type: MULTIPOLYGON
+## Dimension:     XY
+## Bounding box:  xmin: 2636922 ymin: 1385747 xmax: 7315868 ymax: 5412257
+## CRS:           NA</code></pre>
+<pre class="r"><code>nuts0</code></pre>
+<pre><code>## Simple feature collection with 37 features and 2 fields
+## Geometry type: MULTIPOLYGON
+## Dimension:     XY
+## Bounding box:  xmin: 2636922 ymin: 1385747 xmax: 7315868 ymax: 5412257
+## Projected CRS: ETRS89-extended / LAEA Europe
+## First 10 features:
+##    id              na                       geometry
+## 1  AL       Shqipëria MULTIPOLYGON (((5129245 220...
+## 2  DK         Danmark MULTIPOLYGON (((4333002 373...
+## 3  NL       Nederland MULTIPOLYGON (((4113121 337...
+## 4  PL          Polska MULTIPOLYGON (((4901239 350...
+## 5  PT        Portugal MULTIPOLYGON (((2822526 226...
+## 6  AT      Österreich MULTIPOLYGON (((4727061 288...
+## 7  BE Belgique/België MULTIPOLYGON (((3980583 315...
+## 8  DE     Deutschland MULTIPOLYGON (((4283744 352...
+## 9  UK  United Kingdom MULTIPOLYGON (((3612422 320...
+## 10 ES          España MULTIPOLYGON (((2906568 245...</code></pre>
+<p>But before this becomes usable in the <code>tidyverse</code>, we need to convert it into a tibble:</p>
+<pre class="r"><code>nuts0_tibble &lt;- nuts0 %&gt;% as_tibble()
+
+nuts0_tibble %&gt;% 
+  ggplot() +
+  geom_sf(aes(geometry = geometry)) +
+  coord_sf() + # note it is not coord_map but _sf!
+  labs(
+    title = &quot;**Finally, a Europe Map**&quot;,
+    subtitle = &quot;*Countries in Europe*&quot;,
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    plot.title.position = &quot;plot&quot;,
+    plot.title = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown(),
+    panel.grid = element_blank(), # remove plot grid
+    axis.text = element_blank(), # removes text from both axis
+    axis.ticks = element_blank() # same with ticks
+  )</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-2-1.png" width="2100" /></p>
+</div>

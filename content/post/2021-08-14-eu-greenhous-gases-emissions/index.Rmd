@@ -1,0 +1,153 @@
+---
+title: EU Greenhous Gases Emissions
+author: Luca Baggi
+date: '2021-08-14'
+draft: true
+slug: []
+categories: []
+tags: []
+---
+
+# Task 
+
+> Please provide a pdf document of only one A4 page with the naming convention "3946 -- LAST NAME -- FIRST NAME.PDF". The page should contain:
+
+> A. the name of the applicant;
+
+> B. a first chart showing for the year 2019 and each EU country "Total Greenhouse gas emissions (excluding LULUCF and memory items, including international aviation)" (y-axis) vs. "Population" (x-axis);
+
+> possible sources of information:
+\* <https://ec.europa.eu/eurostat/databrowser/view/ENV_AIR_GGE/default/table?lang=en>
+\* <https://ec.europa.eu/eurostat/databrowser/view/tps00001/default/table?lang=en>;
+
+> C. a second chart showing for the year 2019 and each EU country "Total Greenhouse gas emissions (excluding LULUCF and memory items, including international aviation)" (y-axis) vs. "Size of country in thousands of square kilometres" (x-axis);
+
+> possible sources of information:
+\* <https://ec.europa.eu/eurostat/databrowser/view/ENV_AIR_GGE/default/table?lang=en>
+\* <https://europa.eu/european-union/about-eu/figures/living_en>;
+
+> D. a maximum of three brief bullet points with your main findings from those two charts.
+
+> Note: Your submission for this exercise must be your own work. Any quotations from the published or unpublished work of others must be clearly identified as such and full references to the sources must be provided in proper form. All paraphrased material must be acknowledged. Failing to meet these requirements, or passing off the work of others as your own, whether deliberately or not, is considered plagiarism and will lead to your exclusion from this selection procedure. You can save the application and resume it once you have finished the exercise and are ready to upload it.
+
+# Load Libraries
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  cache = TRUE, warning = FALSE, message = FALSE, 
+  # tidy = "styler", fig.width = 8, fig.height = 5,
+  echo = TRUE, dpi = 300, cache.lazy = FALSE
+)
+```
+
+Let's load the libraries we will be using.
+
+```{r libraries, message=FALSE}
+# essential for data manipulation
+library(tidyverse)
+# render markdown in plots
+library(ggtext)
+# for matching country codes with country names
+library(countrycode)
+
+# workflow management
+library(here)
+here::i_am("index.Rmd")
+
+theme_set(theme_minimal())
+```
+
+# Retrieve Data
+
+Let's start with greenhouse gases emissions data. The table can be retrieved from [here](https://ec.europa.eu/eurostat/databrowser/view/ENV_AIR_GGE/default/table?lang=en); we chose only data for 2019.
+
+This data reports the emissions of greenhouse gases in thousands of tonnes. Data is retrieved annually and refers to several categories of pollutants (i.e., chemical compounds). Data is also available at the level of each pollutant. For the aggregation, each other compound is converted into CO_2 equivalents. Data refers to all emissions, excludes Land use, land-use change and forestry ([LULUCF](https://unfccc.int/topics/land-use/workstreams/land-use--land-use-change-and-forestry-lulucf)) and memo items, but includes international aviation.
+
+```{r get-emissions-data}
+# emissions
+ghg_emissions <- read_delim(here("data", "gge.tsv"), delim = "\t") %>% 
+  rename(
+    country_code = 1,
+    emissions_2019 = 2
+  ) %>% 
+  mutate(
+    country_code = stringr::str_remove(country_code, "^(\\w*,){4}") %>% as_factor(),
+    emissions_2019 = emissions_2019 %>% as.integer()
+  )
+
+ghg_emissions
+```
+
+The first column needed some cleaning using regexes; to test your regex you can use regexr.com.
+
+Let's retrieve the population data. Some there
+
+```{r get-population-data}
+# population
+population <- read_delim(here("data", "population.tsv"), delim = "\t") %>% 
+  rename(
+    country_code = 1,
+    population_2019 = 2
+  ) %>% 
+  mutate(
+    country_code = stringr::str_remove(country_code, "^(.*,){2}") %>% as_factor(),
+    population_2019 = stringr::str_remove(population_2019, "\\s*[a-z]*$") %>% as.integer()
+  )
+
+population
+```
+
+There are more columns than EU countries here, we will need to clean the data further. Data actually contains other non-EU countries - as we can see from inspecting the country-codes or, better, after retrieving the country names.
+
+```{r}
+population %>% 
+  mutate(
+    country_name = countrycode(country_code, "iso2c", "country.name")
+  ) %>% 
+  relocate(country_name, .after = country_code)
+```
+
+We can simply solve this problem when joining the data. Let's retrieve the surface data - which dates to 2015, but it is the latest available (updated on August 2nd, 2021 at the time of writing; see [here](https://ec.europa.eu/eurostat/databrowser/view/demo_r_d3area/default/table?lang=en)).
+
+```{r get-surface-data}
+# surface
+surface <- read_delim(here("data", "eu_area_2015.tsv"), delim = "\t") %>% 
+  rename(
+    country_code = 1,
+    surface_2015_km2 = 2
+  ) %>% 
+  mutate(
+    country_code = stringr::str_remove(country_code, "^(\\w*,){3}") %>% as_factor(),
+    surface_2015_km2 = stringr::str_remove(surface_2015_km2, "\\s*[a-z]*$") %>% as.integer()
+  )
+
+surface
+```
+
+# Join the Data
+
+```{r join-data}
+join <- ghg_emissions %>% 
+  inner_join(population, by = "country_code") %>% 
+  inner_join(surface, by = "country_code") %>% 
+  mutate(
+    country_name = case_when(
+      country_code == "EL" ~ "Greece",
+      country_code == "UK" ~ "United Kingdom",
+      TRUE ~ countrycode(country_code, "iso2c", "country.name")  
+    )) %>% 
+  relocate(country_name, .after = country_code) %>% 
+  arrange(country_name) %>% 
+  filter(country_name != "Iceland")
+
+eu28 <- join %>% 
+  add_row(
+    country_code = "EU28",
+    country_name = "EU 28",
+    emissions_2019 = sum(join$emissions_2019),
+    population_2019 = sum(join$population_2019),
+    surface_2015_km2 = sum(join$surface_2015_km2)
+  )
+```
+
+We also added one last row for the final data.

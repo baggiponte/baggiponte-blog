@@ -1,0 +1,200 @@
+---
+title: Getting the European Union Map using rgdal
+author: Luca Baggi
+date: '2021-02-07'
+slug: european-union-map-rgdal
+categories: []
+tags:
+  - eu
+  - maps
+draft: true
+---
+
+The other day I needed to plot some data about EU savings. I went back to the [R Graph Gallery](https://www.r-graph-gallery.com/index.html) to look at how to do that. Unfortunately, no EU map is readily available with R packages such as `maps`. This meant I had to start a fun trip across Eurostat official pages and retrieve one. We will also be mentioning a couple of spatial libraries for R. In the end, we will use `{sf}`, so make sure to run `install.packages('sf')`.
+
+```{r setup-chunks, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, message = FALSE, 
+                      # tidy = "styler", fig.width = 8, fig.height = 5,
+                      echo = TRUE, dpi = 300, cache.lazy = FALSE)
+```
+
+```{r load-packages, message=FALSE}
+# set a relative path that points at this file
+here::i_am("./index.Rmd")
+library(here)
+
+library(tidyverse)
+library(sf)
+
+# set better theme
+theme_set(theme_minimal())
+```
+
+
+# Getting Familiar with Maps
+
+Let's get familiar with maps! R offers several packages which can be plotted with `base R` `plot()` command or `ggplot()` using the layer `geom_polygon()` (but also others).
+
+Some maps can be drawn directly from `ggplot` using `ggplot::map_data()` (which relies on `maps`). However, it does not have everything one might need.
+
+```{r example-map}
+# load a map
+usa_map <- map_data('state') 
+
+# plain US map
+usa_map %>%
+  ggplot(aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = 'grey60', col = 'grey') +
+  # to set the coordinates
+  coord_map()
+```
+
+But we can improve on this:
+
+```{r better-usa-map}
+usa_map %>%
+  ggplot(aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = 'grey60', col = 'grey') +
+  coord_map() +
+  labs(
+    title = "**United States of America**",
+    subtitle = "*Just a plain map*",
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    plot.title.position = "plot",
+    plot.title = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown(),
+    panel.grid = element_blank(), # remove plot grid
+    axis.text = element_blank(), # removes text from both axis
+    axis.ticks = element_blank() # same with ticks
+  )
+```
+
+This seems nice, but let's add some data to create an informative visualisation.
+
+```{r add-data}
+# add some data
+arrests_data <- USArrests %>% as_tibble(rownames = 'state')
+
+arrests_data %>%
+  # specify the column for the (indirect) join we are going to perform
+  ggplot(aes(
+    # we set it to lowercase because `state` starts with a capital letter
+    # in the map object it's lowercase
+    map_id = tolower(state))
+  ) +
+  geom_map(aes(fill = Murder), map = usa_map) +
+  # needed to set the boundaries right!
+  expand_limits(x = usa_map$long, y = usa_map$lat) +
+  # do not forget!
+  coord_map() +
+  scale_fill_gradient2(high = "red") +
+  labs(
+    title = '**Murders in each US State**',
+    subtitle = "*Darker means greater number of murders*",
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    plot.title.position = "plot",
+    plot.title = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown(),
+    panel.grid = element_blank(), # remove plot grid
+    axis.text = element_blank(), # removes text from both axis
+    axis.ticks = element_blank(), # same with ticks
+    legend.position = 'none'
+  )
+```
+
+The package `ggmap` fetches data like Google Maps, but if we want to use a specific file, such as a `.shp` we must use the function `readOGR()` from `{rgdal}`. `json` files can be read with `{geojsonio}`. All can be read with the swiss-knife for spatial analysis in R: `{sf}`.
+
+# A Map for the EU
+
+The EU's official institute of statistics, Eurostat, has developed a specific classifications of the member states' administrative units. It's called [NUTS](https://ec.europa.eu/eurostat/web/nuts/background) (Nomenclature of Territorial Units for Statistics) and it has three/four levels according to the administrative regions in the Union. The files can be all downloaded from [here](https://ec.europa.eu/eurostat/web/gisco/geodata/reference-data/administrative-units-statistical-units/nuts). However, Eurostat has also created a public GitHub repository to retrieve geojson files: [eurostat/nuts2json](https://github.com/eurostat/Nuts2json).
+
+```{r download-data}
+# define data dir for downloading files
+data_dir <- here::here("data")
+# define file url
+nuts0_url <- "https://raw.githubusercontent.com/eurostat/Nuts2json/master/2021/3035/10M/0.json"
+
+if (file.exists(here::here(data_dir, "nuts0.json"))) {
+  print("Data was already downloaded, you can proceed with the analysis!")
+} else {
+  if (dir.exists(data_dir)) {
+    download.file(nuts0_url, destfile = here(data_dir, "nuts0.json"))
+  } else {
+    dir.create(data_dir)
+    download.file(nuts0_url, destfile = here(data_dir, "nuts0.json"))
+  }
+}
+
+nuts0_path <- here(data_dir, "nuts0.json")
+```
+
+The resolution we are using is 1:10 million, and 2021 is the year the classification was updated.
+
+Geographic data cannot simply be plotted: broadly speaking, this is because the Earth cannot be converted to a flat surface, without distortions. In other words, before using some geographic data, we must make sure we are using the recommended projections. This is of the utmost importance when joining data from different sources.
+
+The projection is one among the following:
+
+* projection: 4-digit [EPSG code](https://en.wikipedia.org/wiki/EPSG_Geodetic_Parameter_Dataset)
+* EPSG:4326 (WGS84, coordinates in decimal degrees)
+* EPSG:3035 (ETRS 1989 in [Lambert Azimutal](https://en.wikipedia.org/wiki/Lambert_azimuthal_equal-area_projection) projection with * centre in E52N10, coordinates in meters)
+* EPSG:3857 (WGS84 Web Mercator Auxiliary Sphere, coordinates in meters)
+
+EPSG:3035 is recommended for plotting EU data.
+
+Finally, here's a quick explanation of the NUTS levels:
+
+* NUTS levels 0,1,2,3. No subset code means all NUTS levels are in the same file.
+* LEVL_0: NUTS level 0 (countries)
+* LEVL_1: NUTS level 1
+* LEVL_2: NUTS level 2
+* LEVL_3: NUTS level 3
+* Country boundaries: coastline or inland line. No subset code means all country boundaries are in the same file.
+* INLAND: inland boundaries
+* COASTL: coastlines
+
+Let's look at the layers available in the `.json` file we downlaoded:
+
+```{r nuts-layers}
+sf::st_layers(nuts0_path)
+```
+
+```{r}
+nuts0 <- sf::st_read(nuts0_path, layer = "nutsrg") %>% 
+  # crs needs to be set!
+  st_set_crs("EPSG:3035")
+
+nuts0
+```
+
+But before this becomes usable in the `tidyverse`, we need to convert it into a tibble:
+
+```{r}
+nuts0_tibble <- nuts0 %>% as_tibble()
+
+nuts0_tibble %>% 
+  ggplot() +
+  geom_sf(aes(geometry = geometry)) +
+  coord_sf() + # note it is not coord_map but _sf!
+  labs(
+    title = "**Finally, a Europe Map**",
+    subtitle = "*Countries in Europe*",
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    plot.title.position = "plot",
+    plot.title = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown(),
+    panel.grid = element_blank(), # remove plot grid
+    axis.text = element_blank(), # removes text from both axis
+    axis.ticks = element_blank() # same with ticks
+  )
+  
+```
+

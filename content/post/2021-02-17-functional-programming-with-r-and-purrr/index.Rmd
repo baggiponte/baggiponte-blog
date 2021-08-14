@@ -1,0 +1,28 @@
+---
+title: Functional Programming with R and purrr
+author: Luca Baggi
+date: '2021-02-17'
+slug: []
+categories: []
+tags:
+  - functional programming
+  - purrr
+  - tidyverse
+draft: true
+---
+
+My previous post had quite some code repetitions that could have been cut down by defining some custom functions. Then I encountered several Hadley's talks on functional programming with `purrr` and I was thrilled.
+
+The concept is the following:
+
+```{r, message=FALSE}
+library(tidyverse)
+library(purrr)
+```
+
+
+```{r}
+diamonds %>% 
+  split(diamonds$color)
+```
+

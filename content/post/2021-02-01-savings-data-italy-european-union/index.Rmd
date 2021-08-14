@@ -8,55 +8,739 @@ tags:
   - economics
   - visualisation
   - eu
+  - covid19
 draft: true
 ---
 
-```{r, include=FALSE}
+```{r chunk_settings, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(cache = TRUE, warning = FALSE, message = FALSE, 
                       # tidy = "styler", fig.width = 8, fig.height = 5,
                       echo = TRUE, dpi = 300, cache.lazy = FALSE)
+```
 
+It is a common belief that Italians are a good 'risparmiatori', of savers. So I set out to verify this claim.
+
+The first trick is that 'savings' meant by economists and by ordinary people have two different meanings. Let's go through a bit of economics jargon, then.
+
+# Economics Primer
+
+I swear this will be brief!
+
+The **gross domestic product (GDP)** is the output produced by the economy of a region in a given time span. Generally speaking, we compute the GDP for states and regions, usually across years or quarters.
+
+GDP can be computed in many ways. The most common one is the sum of final consumption expenditure, private investment, public expenditure and the difference between import and export.
+
+If we add to the GDP the income received from abroad, we obtain the Gross National Income (GNI), that is the income of the nation. Now we can obtain one definition: ***gross savings of the nation can be defined as the GNI minus the final consumption expenditure**.
+
+This is the savings of a nation, so the savings of the public sector, of firms and of households. So we have to look at households savings, too. **Gross household savings** can be defined as the **disposable/available income (i.e., net of taxes) less the final consumption expenditures**.
+
+Now, since raw numbers comparison are indicative, we reason in terms of *two rates*. For the national savings, we use the **(gross) saving rate**, defined as *gross savings over GDP*. Then, we use the **gross household saving rate**, defined as *gross household saving over household disposable income*.
+
+Quick enough? Let's move on to the next part.
+
+# Gross Saving Rate
+
+Let's load our libraries first.
+
+```{r libs, message=FALSE}
+# the lib we're going to use
 library(tidyverse)
+theme_set(theme_minimal())
 ```
 
-```{r}
-read_tsv(
-  '~/Downloads/savings_from_1999.tsv',
-  na = ":"
-) %>%
+
+Let's start with gross saving rate. Turns out, OECD has quite a few data available to us (and we won't need plotting them, but hey). Saving data is [here](https://data.oecd.org/natincome/saving-rate.htm). Let's load the data:
+
+```{r saving_rate_data, message=FALSE}
+saving_rate_url <- 'https://stats.oecd.org/sdmx-json/data/DP_LIVE/AUT+BEL+BGR+CYP+CZE+DEU+DNK+EA+ESP+EST+EU+FIN+FRA+GRC+HRV+HUN+IRL+ITA+LTU+LUX+LVA+MLT+NLD+POL+PRT+ROU+SVK+SVN+SWE.SAVING.TOT.PC_GDP.A/OECD?contentType=csv&detail=code&separator=comma&csv-lang=en&startPeriod=1990&endPeriod=2019'
+
+saving_rate <- read_csv(saving_rate_url, col_types = cols(LOCATION = col_factor()))
+```
+
+This data does not require much manipulation, actually. So let's plot it immediately!
+
+```{r bad_plot}
+saving_rate %>%
+  ggplot(aes(x = TIME, y = Value / 100, col = LOCATION)) +
+  geom_line() +
+  geom_point(size = 0.5 ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Tasso di risparmio dei paesi UE (1990-2019)",
+    x = NULL,
+    y = NULL,
+    col = NULL
+  ) +
+  theme(legend.position = 'bottom')
+```
+
+This is quite messy to see. How about improving it?
+
+```{r saving_rate_plot}
+saving_rate %>%
+  ggplot(aes(x = TIME, y = Value / 100, col = LOCATION)) +
+  geom_vline(xintercept = 2008, col = 'grey', linetype = 6) +
+  geom_hline(yintercept = 0, col = 'grey40') +
+  geom_line() +
+  geom_point(size = 0.5 ) +
+  gghighlight::gghighlight(LOCATION == 'ITA' |
+              LOCATION == 'DEU' |
+              LOCATION == 'EU'
+              ) +
+  scale_x_continuous(breaks = seq(1990, 2019, 3)) +
+  theme(axis.text.x = element_text(angle = 30)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "**Tasso di risparmio dei paesi UE (1990-2019)**",
+    subtitle = '*Italia, Germania e media UE in evidenza*',
+    x = NULL,
+    y = NULL,
+    caption = '*Dati OCSE, elaborazione Il Post*'
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
+  )
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 9,
+       units = 'cm',
+       filename = 'plots/01_tasso_risparmio.png')
+```
+
+It appears that Italy follows Germany until 2002, never to get back. Since 2002, Italy's saving capabilities have been under performing the European average.
+
+This means that all components of the nation can't save enough: the government is known for its large budget deficits. Firms have low savings too, as Mario Draghi himself had pointed out several years ago (and this must have an impact on private investment capabilites). This implies that access to credit is essential to foster investment growth. Let's look more closely at household saving rates.
+
+# Gross Household Saving Rate
+
+Once again, we can use OECD data.
+
+```{r hh_savings_data, message=FALSE}
+hh_saving_rate_url <- 
+  'https://stats.oecd.org/sdmx-json/data/DP_LIVE/AUT+BEL+BGR+CYP+CZE+DEU+DNK+EA+ESP+EST+EU+FIN+FRA+GRC+HRV+HUN+IRL+ITA+LTU+LUX+LVA+MLT+NLD+POL+PRT+ROU+SVK+SVN+SWE.HHSAV.TOT.PC_HHDI.A/OECD?contentType=csv&detail=code&separator=comma&csv-lang=en&startPeriod=1990&endPeriod=2019'
+
+hh_saving_rate <- read_csv(hh_saving_rate_url)
+```
+
+And plot it:
+
+```{r hh_savings_plot}
+hh_saving_rate %>%
+  filter(TIME >= 1995) %>% 
+  ggplot(aes(x = TIME, y = Value / 100, col = LOCATION)) +
+  geom_vline(xintercept = 2008, col = 'grey', linetype = 6) +
+  geom_hline(yintercept = 0, col = 'gray40') +
+  geom_line() +
+  geom_point(size = 0.5 ) +
+  gghighlight::gghighlight(LOCATION == 'ITA' |
+              LOCATION == 'DEU' |
+              LOCATION == 'EU'
+              ) +
+  scale_x_continuous(breaks = seq(1990, 2019, 3)) +
+  theme(axis.text.x = element_text(angle = 30)) +
+  scale_y_continuous(
+    labels = scales::percent
+    ) +
+  labs(
+    title = "**Tasso di risparmio delle famiglie nei paesi UE (1995-2019)**",
+    subtitle = '*Italia, Germania e media UE in evidenza*',
+    x = NULL,
+    y = NULL,
+    caption = '*Dati OCSE, elaborazione Il Post*'
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
+  )
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 9,
+       units = 'cm',
+       filename = 'plots/02_tasso_risparmio_famiglie.png')
+```
+
+Household savings were consistently abote the EU average until the 2008 financial crisis and were quite high in the interval from 1995 (start of the data) to 1998 (even greater than Germany!). **It seems Italian households were in fact savers, but they haven't been for a long time.**
+
+# What Causes Low Saving Rates?
+
+Sure, an increase in consumptions decreases savings, keeping income fixed. This means a shift in time-preferences occurs: more purchases today and less tomorrow. Viceversa, a reduction in consumption today is usually related to uncertainty effects.
+
+Clearly, 2008 crisis brought about a great deal of uncertainty. We expect saving rates to increase, but this does not happen. That is due to the decrease in income (and increase in government spending for economic relief measures or increased debt interest rates). Consumption cannot fall beyond a certain point, as some purchases are essential to satisfy basic needs.
+
+Let's look at income data for European countries. In particular, we are looking at OECD **households gross disposable income**.
+
+```{r hh_gni_data, message=FALSE}
+hh_gni_url <-
+  'https://stats.oecd.org/sdmx-json/data/DP_LIVE/AUT+BEL+BGR+CYP+CZE+DEU+DNK+EA+ESP+EST+EU+FIN+FRA+GRC+HRV+HUN+IRL+ITA+LTU+LUX+LVA+MLT+NLD+POL+PRT+ROU+SVK+SVN+SWE.HHDI.GROSSADJ.USD_CAP.A/OECD?contentType=csv&detail=code&separator=comma&csv-lang=en&startPeriod=1990&endPeriod=2019'
+
+hh_gni <- read_csv(hh_gni_url)
+```
+
+And then we plot it, using more benchmark states:
+
+```{r hh_gni_plot}
+hh_gni %>%
+  filter(TIME >= 1995) %>% 
+  ggplot(aes(x = TIME, y = Value, col = LOCATION)) +
+  geom_line() +
+  geom_point(size = 0.5 ) +
+  gghighlight::gghighlight(LOCATION == 'ITA' |
+              LOCATION == 'DEU' |
+              LOCATION == 'EU' |
+              LOCATION == 'EA' |
+              LOCATION == 'ESP'
+              ) +
+  scale_x_continuous(breaks = seq(1995, 2019, 3)) +
+  theme(axis.text.x = element_text(angle = 30)) +
+  geom_vline(xintercept = 2008, col = 'grey', linetype = 6) +
+  labs(
+    title = "**Reddito disponibile pro capite delle famiglie nei paesi UE (1995-2019)**",
+    subtitle = '*Italia, Germania e media UE in evidenza (dati in dollari USA)*',
+    x = NULL,
+    y = NULL,
+    caption = '*Dati OCSE, elaborazione Il Post*'
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
+  )
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 9,
+       units = 'cm',
+       filename = 'plots/03a_reddito_disponibile.png')
+```
+
+What's striking is that Italian families' disposable income starts at a level comparable to the average of EU member states who adopt the Euro (the so-called European Area, totalling 19 members so far). After the crisis, it dropped even below the EU average and closer to Spain (another country among those hit hardest by the financial crisis).
+
+Using a facet wrap:
+
+```{r hh_gni_facet}
+hh_gni %>%
+  filter(TIME >= 1995) %>% 
+  ggplot(aes(x = TIME, y = Value, col = LOCATION)) +
+  geom_line() +
+  gghighlight::gghighlight(LOCATION == 'ITA' |
+              LOCATION == 'DEU' |
+              LOCATION == 'EU' |
+              LOCATION == 'EA' |
+              LOCATION == 'FRA' |
+              LOCATION == 'ESP'
+              ) +
+  facet_wrap(~ LOCATION, nrow = 2) +
+  geom_vline(xintercept = 2008, col = 'grey', linetype = 6) +
+  scale_x_continuous(
+    breaks = seq(1990, 2019, 6),
+    expand = c(0,0)
+  ) +
+  theme(axis.text.x = element_text(angle = 30)) +
+  labs(
+    title = "**Reddito disponibile pro capite delle famiglie nei paesi UE (1995-2019)**",
+    subtitle = '*Italia, Germania e media UE in evidenza (dati in dollari USA)*',
+    x = NULL,
+    y = NULL,
+    caption = '*Dati OCSE, elaborazione Il Post*'
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
+  )
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 9,
+       units = 'cm',
+       filename = 'plots/03b_reddito_disponibile.png')
+```
+
+Italy and Spain are the only one countries highlighted that display an horizontal segment after the 2008 financial crisis and the 2011 debt crisis. This implies that income growth was almost null and purchasing power effectively decreased due to inflation (which arguably might not have played such a great role, as inflation has been historically low).
+
+One additional note: fiscal pressure might also play a role, as it is deemed higher in Italy than in other countries (we might verify this claim too, one day). This effectively reduces disposable income, too.
+
+```{r hh_gni_col}
+hh_gni %>%
+  filter(TIME == 2019) %>% 
+  mutate(LOCATION = as.factor(LOCATION)) %>% 
+  mutate(LOCATION = forcats::fct_reorder(LOCATION, Value)) %>% 
+  ggplot(aes(x = Value, y = LOCATION, fill = LOCATION)) +
+  geom_col() +
+  scale_x_continuous(
+    expand = c(0,0.1),
+    limits = c(0, 49000)
+  ) +
+  geom_text(aes(label = trunc(Value), hjust = -0.2)) +
+  gghighlight::gghighlight(
+    LOCATION == 'ITA' |
+    LOCATION == 'DEU' |
+    LOCATION == 'EU' |
+    LOCATION == 'FRA' |
+    LOCATION == 'ESP'
+  ) +
+  labs(
+    title = '**Reddito disponibile pro capite nei paesi UE (dollari USA, 2019)**',
+    subtitle = '*Evidenziati Italia, Germania e media UE*\n',
+    y = NULL,
+    caption = '*Dati OCSE, elaborazione Il Post*'
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    legend.position = 'none',
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
+  )
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 12,
+       units = 'cm',
+       filename = 'plots/03c_reddito_disponibile_2019.png')
+```
+
+# Gross Household Saving Rate for 2020
+
+Eurostat provides quarterly data for some European countries' gross household saving rate. Only some are available, as too small countries are not required to submit national accounts quarterly data. They can be found [here](https://ec.europa.eu/eurostat/databrowser/view/nasq_10_ki/default/table?lang=en).
+
+Let's see what happened with COVID-19 crisis. Data has to be downloaded before and is a bit messy: despite being a tab separated value (tsv) the first 6 columns will be read as one as they are separated by a comma.
+
+```{r eurostat_hh_saving_rate, message=FALSE}
+url_eurostat <-
+  'https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/NASQ_10_KI/Q.PC.SCA.SRG_S14_S15.S14_S15.EU27_2020+EU28+EA19+BE+CZ+DK+DE+EE+IE+EL+ES+FR+IT+NL+AT+PL+PT+RO+SI+FI+SE+UK+NO/?format=TSV&compressed=true&startPeriod=2018-Q2&endPeriod=2020-Q3'
+
+# if dir does not exist, create it
+if (!dir.exists('data/')) {
+  dir.create('data/')  
+}
+
+# if file does not exist, download it
+if (!file.exists('data/eurostat_quarterly.tsv')) {
+  download.file(url = url_eurostat, destfile = 'data/eurostat_quarterly.tsv')  
+}
+
+eurostat_hh_saving_rate <-
+  read_tsv('data/eurostat_quarterly.tsv', na = ':') %>%
+  # rename first column 
   rename(names = 1) %>%
+  # separate first column into other cols using ',' as a separator
   separate(names, sep = ',', into = c('a', 'b', 'c', 'd', 'e', 'f')) %>%
-  rename(country = f) %>%
-  select(country:last_col()) -> savings
+  # rename last col
+  rename(country = f) %>% 
+  # discard other cols
+  select(country:last_col())
 ```
 
-```{r}
-colnames(savings)
-rownames(savings) <- savings$country
+Then we need to wrangle it a bit, since we want it in the long format to plot it more efficiently.
 
-savings %>%
+```{r eurostat_wrangle}
+eurostat_hh_saving_rate %>%
   pivot_longer(!country, names_to = 'quarters', values_to = 'savings') %>%
   mutate(
     quarters = lubridate::yq(quarters),
     savings = savings / 100
   ) %>%
-  filter(
-    country != 'RO',
-    country != 'EU28'
-  ) %>%
-  # rename(EU27 = EU27_2020) %>%
+  na.omit() %>%
   ggplot(aes(quarters, savings, col = country)) +
   geom_line() +
-  facet_wrap(~ country) +
+  geom_point(size = 0.5) +
+  gghighlight::gghighlight(
+    country == 'IT' |
+    country == 'DE' |
+    country == 'FR' |
+    country == 'UK'
+  ) +
   scale_y_continuous(labels = scales::percent) +
-  theme_minimal() +
-  theme(legend.position = 'none') +
   theme(axis.text.x = element_text(angle = 30, hjust = 1)) +
   labs(
-    title = 'Household Savings Rate in the EU',
-    subtitle = 'From 1991 to 2020, quarterly',
+    title = '**Tasso di risparmio lordo delle famiglie nei paesi UE**',
+    subtitle = '*Dati trimestrali destagionalizzati (2018Q2 - 2020Q3)*',
     x = NULL,
-    y = NULL
+    y = NULL,
+    caption = '\n*Dati Eurostat, elaborazione Il Post*'
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
   )
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 9,
+       units = 'cm',
+       filename = 'plots/04_tasso_risparmio_famiglie_2020.png')
+```
+
+One more note on the data: it's seasonal and calendar adjusted, since its quarter data.
+
+It is remarkable that Italy displayed the smallest increase of household saving rate among the largest EU countries. Perhaps it's due to the fact that it was hit hardest and sooner, but UK was hit around the same time and did not display a small increase at all. Income data might tell us more!
+
+# Wealth
+
+```{r oecd_wealth, message=FALSE}
+url_oecd_deposits <- 
+  'https://stats.oecd.org/sdmx-json/data/DP_LIVE/AUS+AUT+BEL+CAN+CHE+CHL+COL+CZE+DEU+DNK+ESP+EST+FIN+FRA+GBR+GRC+HUN+IRL+ISL+ISR+ITA+JPN+KOR+LTU+LUX+LVA+MEX+NLD+NOR+NZL+POL+PRT+SVK+SVN+SWE+TUR+USA.HHFA.CURDEP.PC_HHFA.A/OECD?contentType=csv&detail=code&separator=comma&csv-lang=en&startPeriod=2019&endPeriod=2019'
+
+url_oecd_non_shares <- 
+  'https://stats.oecd.org/sdmx-json/data/DP_LIVE/AUS+AUT+BEL+CAN+CHE+CHL+COL+CZE+DEU+DNK+ESP+EST+FIN+FRA+GBR+GRC+HUN+IRL+ISL+ISR+ITA+JPN+KOR+LTU+LUX+LVA+MEX+NLD+NOR+NZL+POL+PRT+SVK+SVN+SWE+TUR+USA.HHFA.SECOTHSH.PC_HHFA.A/OECD?contentType=csv&detail=code&separator=comma&csv-lang=en&startPeriod=2019&endPeriod=2019'
+
+url_oecd_shares <- 
+  'https://stats.oecd.org/sdmx-json/data/DP_LIVE/AUS+AUT+BEL+CAN+CHE+CHL+COL+CZE+DEU+DNK+ESP+EST+FIN+FRA+GBR+GRC+HUN+IRL+ISL+ISR+ITA+JPN+KOR+LTU+LUX+LVA+MEX+NLD+NOR+NZL+POL+PRT+SVK+SVN+SWE+TUR+USA.HHFA.SHOTHEQTY.PC_HHFA.A/OECD?contentType=csv&detail=code&separator=comma&csv-lang=en&startPeriod=2019&endPeriod=2019'
+
+url_oecd_funds <- 
+  'https://stats.oecd.org/sdmx-json/data/DP_LIVE/AUS+AUT+BEL+CAN+CHE+CHL+COL+CZE+DEU+DNK+ESP+EST+FIN+FRA+GBR+GRC+HUN+IRL+ISL+ISR+ITA+JPN+KOR+LTU+LUX+LVA+MEX+NLD+NOR+NZL+POL+PRT+SVK+SVN+SWE+TUR+USA.HHFA.MFSH.PC_HHFA.A/OECD?contentType=csv&detail=code&separator=comma&csv-lang=en&startPeriod=2019&endPeriod=2019'
+
+url_oecd_insurance <- 
+  'https://stats.oecd.org/sdmx-json/data/DP_LIVE/AUS+AUT+BEL+CAN+CHE+CHL+COL+CZE+DEU+DNK+ESP+EST+FIN+FRA+GBR+GRC+HUN+IRL+ISL+ISR+ITA+JPN+KOR+LTU+LUX+LVA+MEX+NLD+NOR+NZL+POL+PRT+SVK+SVN+SWE+TUR+USA.HHFA.LIFEINSRSV.PC_HHFA.A/OECD?contentType=csv&detail=code&separator=comma&csv-lang=en&startPeriod=2019&endPeriod=2019'
+
+url_oecd_pension_shares <- 
+  'https://stats.oecd.org/sdmx-json/data/DP_LIVE/AUS+AUT+BEL+CAN+CHE+CHL+COL+CZE+DEU+DNK+ESP+EST+FIN+FRA+GBR+GRC+HUN+IRL+ISL+ISR+ITA+JPN+KOR+LTU+LUX+LVA+MEX+NLD+NOR+NZL+POL+PRT+SVK+SVN+SWE+TUR+USA.HHFA.PENSIONF.PC_HHFA.A/OECD?contentType=csv&detail=code&separator=comma&csv-lang=en&startPeriod=2019&endPeriod=2019'
+
+read_csv(url_oecd_deposits) %>% 
+  select(state = LOCATION, deposit_percent = Value) %>% 
+  inner_join(
+    read_csv(url_oecd_non_shares) %>%
+      select(state = LOCATION, non_shares_percent = Value)
+  ) %>% 
+  inner_join(
+    read_csv(url_oecd_shares) %>%
+      select(state = LOCATION, shares_percent = Value)
+  ) %>% 
+  inner_join(
+    read_csv(url_oecd_funds) %>%
+      select(state = LOCATION, fund_shares_percent = Value)
+  ) %>% 
+  inner_join(
+    read_csv(url_oecd_insurance) %>%
+      select(state = LOCATION, insurance_percent = Value)
+  ) %>% 
+  inner_join(
+    read_csv(url_oecd_pension_shares) %>%
+      select(state = LOCATION, pension_shares_percent = Value)
+  ) %>% 
+  mutate(across(where(is.numeric), ~ .x / 100)) -> oecd_wealth
+```
+
+Now that we have wrangled the data, we can plot it (but first, remember to pivot to longer!)
+
+## Deposits
+
+```{r oecd_deposits}
+oecd_wealth %>% 
+  pivot_longer(!state, names_to = 'value', values_to = 'percent') %>%
+  filter(value == 'deposit_percent') %>%
+  mutate(state = fct_reorder(state, percent)) %>% 
+  ggplot(aes(percent, state)) +
+  geom_col(aes(fill = state)) +
+  geom_text(aes(label = round(percent * 100, 1), hjust = -0.2)) +
+  gghighlight::gghighlight(
+    state == 'ITA' |
+      state == 'FRA' |
+      state == 'DEU' |
+      state == 'USA'
+  ) +
+  scale_x_continuous(
+    labels = scales::percent,
+    expand = c(0,0),
+    limits = c(0,0.85)
+  ) +
+  labs(
+    title = '**Ricchezza detenuta come depositi e contante (%, 2019, paesi OCSE)**',
+    subtitle = '*Evienziati Germania, Italia, Francia e USA*',
+    x = NULL,
+    y = NULL,
+    caption = '*Dati OCSE, elaborazione il Post*'
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    legend.position = 'none',
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
+  )
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 12,
+       units = 'cm',
+       filename = 'plots/05_ocse_depositi.png')
+```
+
+## Shares
+
+```{r oecd_shares}
+oecd_wealth %>% 
+  pivot_longer(!state, names_to = 'value', values_to = 'percent') %>%
+  filter(value == 'shares_percent') %>%
+  mutate(state = fct_reorder(state, percent)) %>% 
+  ggplot(aes(percent, state)) +
+  geom_col(aes(fill = state)) +
+  geom_text(aes(label = round(percent * 100, 1), hjust = -0.2)) +
+  gghighlight::gghighlight(
+    state == 'ITA' |
+      state == 'FRA' |
+      state == 'DEU' |
+      state == 'USA'
+  ) +
+  labs(
+    title = '**Ricchezza detenuta come azioni (%, 2019, paesi OCSE)**',
+    subtitle = '*Evienziati Germania, Italia, Francia e USA*',
+    x = NULL,
+    y = NULL,
+    caption = '*Dati OCSE, elaborazione il Post*'
+  ) +
+  scale_x_continuous(
+    labels = scales::percent,
+    expand = c(0,0),
+    limits = c(0,0.6)
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    legend.position = 'none',
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
+  ) -> oecd_shares
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 12,
+       units = 'cm',
+       filename = 'plots/ocse_azioni.png')
+
+oecd_shares
+```
+
+## Non-shares
+
+```{r oecd_other_shares}
+oecd_wealth %>% 
+  pivot_longer(!state, names_to = 'value', values_to = 'percent') %>%
+  filter(value == 'non_shares_percent') %>%
+  mutate(state = fct_reorder(state, percent)) %>% 
+  ggplot(aes(percent, state)) +
+  geom_col(aes(fill = state)) +
+  geom_text(aes(label = round(percent * 100, 1), hjust = -0.2)) +
+  gghighlight::gghighlight(
+    state == 'ITA' |
+      state == 'FRA' |
+      state == 'DEU' |
+      state == 'USA'
+  ) +
+  labs(
+    title = '**Ricchezza detenuta come altri titoli (%, 2019, paesi OCSE)**',
+    subtitle = '*Evienziati Germania, Italia, Francia e USA*',
+    x = NULL,
+    y = NULL,
+    caption = '*Dati OCSE, elaborazione il Post*'
+  ) +
+  scale_x_continuous(
+    labels = scales::percent,
+    expand = c(0,0),
+    limits = c(0,0.15)
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    legend.position = 'none',
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
+  ) -> oecd_non_shares
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 12,
+       units = 'cm',
+       filename = 'plots/ocse_altri_titoli.png')
+
+oecd_non_shares
+```
+
+## Fund Shares
+
+```{r oecd_fund_shares}
+oecd_wealth %>% 
+  pivot_longer(!state, names_to = 'value', values_to = 'percent') %>%
+  filter(value == 'fund_shares_percent') %>%
+  mutate(state = fct_reorder(state, percent)) %>% 
+  ggplot(aes(percent, state)) +
+  geom_col(aes(fill = state)) +
+  geom_text(aes(label = round(percent * 100, 1), hjust = -0.2)) +
+  gghighlight::gghighlight(
+    state == 'ITA' |
+      state == 'FRA' |
+      state == 'DEU' |
+      state == 'USA'
+  ) +
+  labs(
+    title = '**Ricchezza detenuta come quote fondi comuni (%, 2019, paesi OCSE)**',
+    subtitle = '*Evienziati Germania, Italia, Francia e USA*',
+    x = NULL,
+    y = NULL,
+    caption = '*Dati OCSE, elaborazione il Post*'
+  ) +
+  scale_x_continuous(
+    labels = scales::percent,
+    expand = c(0,0),
+    limits = c(0,0.19)
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    legend.position = 'none',
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
+  ) -> oecd_fund_shares
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 12,
+       units = 'cm',
+       filename = 'plots/ocse_fondi.png')
+
+oecd_fund_shares
+```
+
+## Insurances
+
+```{r oecd_insurances}
+oecd_wealth %>% 
+  pivot_longer(!state, names_to = 'value', values_to = 'percent') %>%
+  filter(value == 'insurance_percent') %>%
+  mutate(state = fct_reorder(state, percent)) %>% 
+  ggplot(aes(percent, state)) +
+  geom_col(aes(fill = state)) +
+  geom_text(aes(label = round(percent * 100, 1), hjust = -0.2)) +
+  gghighlight::gghighlight(
+    state == 'ITA' |
+      state == 'FRA' |
+      state == 'DEU' |
+      state == 'USA'
+  ) +
+  labs(
+    title = '**Ricchezza detenuta come polizze assicurative (%, 2019, paesi OCSE)**',
+    subtitle = '*Evienziati Germania, Italia, Francia e USA*',
+    x = NULL,
+    y = NULL,
+    caption = '*Dati OCSE, elaborazione il Post*'
+  ) +
+  scale_x_continuous(
+    labels = scales::percent,
+    expand = c(0,0),
+    limits = c(0,0.39)
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    legend.position = 'none',
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
+  ) -> oecd_insurances
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 12,
+       units = 'cm',
+       filename = 'plots/ocse_assicurazioni.png')
+
+oecd_insurances
+```
+
+## Pension Fund Shares
+
+```{r oecd_pension_funds}
+oecd_wealth %>% 
+  pivot_longer(!state, names_to = 'value', values_to = 'percent') %>%
+  filter(value == 'pension_shares_percent') %>%
+  mutate(state = fct_reorder(state, percent)) %>% 
+  ggplot(aes(percent, state)) +
+  geom_col(aes(fill = state)) +
+  geom_text(aes(label = round(percent * 100, 1), hjust = -0.2)) +
+  gghighlight::gghighlight(
+    state == 'ITA' |
+      state == 'FRA' |
+      state == 'DEU' |
+      state == 'USA'
+  ) +
+  labs(
+    title = '**Ricchezza detenuta come quote fondi pensione (%, 2019, paesi OCSE)**',
+    subtitle = '*Evienziati Germania, Italia, Francia e USA*',
+    x = NULL,
+    y = NULL,
+    caption = '*Dati OCSE, elaborazione il Post*'
+  )  +
+  scale_x_continuous(
+    labels = scales::percent,
+    expand = c(0,0),
+    limits = c(0,0.69)
+  ) +
+  ggExtra::removeGrid() +
+  theme(
+    legend.position = 'none',
+    plot.title.position = 'plot',
+    plot.title = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown(),
+    plot.subtitle = ggtext::element_markdown()
+  ) -> oecd_pension_funds
+
+ggsave(device = 'png',
+       dpi = 300,
+       width = 16,
+       height = 12,
+       units = 'cm',
+       filename = 'plots/ocse_fondi_pensione.png')
+
+oecd_pension_funds
+```
+
+Let's combine them together:
+
+```{r}
+ggpubr::ggarrange(oecd_non_shares,
+                  oecd_insurances,
+                  oecd_fund_shares,
+                  oecd_pension_funds,
+                  nrow = 2, ncol = 2)
+
+ggsave('plots/08_ocse_combined.png',
+       device = 'png',
+       dpi = 300,
+       width = 32,
+       height = 24,
+       units = 'cm',)
 ```
 

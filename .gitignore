@@ -7,7 +7,12 @@
 .netlify
 
 # Public Hugo folder
-public
+/public/
+/resources/
 
 # testing content
 test
+
+# usual stuff
+.DS_Store
+Thumbs.db
